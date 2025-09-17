@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Knowledge Chatbot</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            height: 80vh;
+        }
+        
+        .panel {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .panel h2 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 10px;
+        }
+        
+        textarea {
+            flex: 1;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            font-size: 14px;
+            resize: none;
+            font-family: inherit;
+        }
+        
+        textarea:focus {
+            border-color: #007acc;
+            outline: none;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .primary {
+            background: #007acc;
+            color: white;
+            flex: 1;
+        }
+        
+        .primary:hover {
+            background: #0066aa;
+        }
+        
+        .secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+        
+        .secondary:hover {
+            background: #e0e0e0;
+        }
+        
+        .response {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            border-left: 4px solid #007acc;
+            font-size: 14px;
+            line-height: 1.5;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .stats {
+            background: #e8f4f8;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+        
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+        
+        .error {
+            color: #d32f2f;
+            background: #ffebee;
+            border-left-color: #d32f2f;
+        }
+        
+        .success {
+            color: #2e7d32;
+            background: #e8f5e8;
+            border-left-color: #2e7d32;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #666;
+            margin: 0;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧠 Local Knowledge Chatbot</h1>
+        <p>Store conversations locally and query them with semantic search</p>
+    </div>
+
+    <div class="container">
+        <div class="panel">
+            <h2>💬 Add Knowledge</h2>
+            <textarea 
+                id="knowledgeInput" 
+                placeholder="Share some information or have a conversation... For example:
+
+'I discovered that the best way to learn programming is through hands-on projects. Start with small projects and gradually increase complexity. Python is great for beginners because of its readable syntax.'
+
+The system will extract and store the key knowledge points for later retrieval."
+            ></textarea>
+            <div class="button-group">
+                <button class="primary" onclick="addKnowledge()">Store Knowledge</button>
+                <button class="secondary" onclick="clearInput()">Clear</button>
+            </div>
+            <div id="addResponse" class="response" style="display: none;"></div>
+        </div>
+
+        <div class="panel">
+            <h2>🔍 Query Knowledge</h2>
+            <textarea 
+                id="queryInput" 
+                placeholder="Ask questions about previously stored information... For example:
+
+'What did you learn about programming?'
+'Tell me about Python'
+'What's the best way to learn coding?'
+
+The system will search through all stored conversations and provide relevant answers."
+            ></textarea>
+            <div class="button-group">
+                <button class="primary" onclick="queryKnowledge()">Ask Question</button>
+                <button class="secondary" onclick="searchDirect()">Direct Search</button>
+            </div>
+            <div id="queryResponse" class="response" style="display: none;"></div>
+        </div>
+    </div>
+
+    <div class="stats" id="stats">
+        <div>📊 <strong>Database Statistics</strong></div>
+        <div id="statsData">Loading...</div>
+        <button class="secondary" onclick="loadStats()">Refresh Stats</button>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+
+        async function makeRequest(endpoint, method = 'GET', data = null) {
+            try {
+                const options = {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                };
+                
+                if (data) {
+                    options.body = JSON.stringify(data);
+                }
+                
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                return await response.json();
+            } catch (error) {
+                throw new Error(`Network error: ${error.message}`);
+            }
+        }
+
+        function showResponse(elementId, content, isError = false, isSuccess = false) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.textContent = content;
+            element.className = 'response';
+            
+            if (isError) {
+                element.classList.add('error');
+            } else if (isSuccess) {
+                element.classList.add('success');
+            }
+        }
+
+        function setLoading(elementId, isLoading) {
+            const element = document.getElementById(elementId);
+            if (isLoading) {
+                element.classList.add('loading');
+            } else {
+                element.classList.remove('loading');
+            }
+        }
+
+        async function addKnowledge() {
+            const input = document.getElementById('knowledgeInput');
+            const message = input.value.trim();
+            
+            if (!message) {
+                showResponse('addResponse', 'Please enter some text to store as knowledge.', true);
+                return;
+            }
+
+            setLoading('addResponse', true);
+            
+            try {
+                const result = await makeRequest('/chat', 'POST', {
+                    message: message,
+                    user_id: 'web_user'
+                });
+                
+                const successMsg = `✅ Knowledge stored successfully!\n` +
+                    `📝 Extracted ${result.knowledge_items_extracted} knowledge items\n` +
+                    `🆔 Conversation ID: ${result.conversation_id}`;
+                    
+                showResponse('addResponse', successMsg, false, true);
+                loadStats(); // Refresh stats
+                
+            } catch (error) {
+                showResponse('addResponse', `Error storing knowledge: ${error.message}`, true);
+            } finally {
+                setLoading('addResponse', false);
+            }
+        }
+
+        async function queryKnowledge() {
+            const input = document.getElementById('queryInput');
+            const query = input.value.trim();
+            
+            if (!query) {
+                showResponse('queryResponse', 'Please enter a question.', true);
+                return;
+            }
+
+            setLoading('queryResponse', true);
+            
+            try {
+                const result = await makeRequest('/query', 'POST', {
+                    query: query,
+                    user_id: 'web_user'
+                });
+                
+                const responseText = `🤖 Answer:\n\n${result.response}`;
+                showResponse('queryResponse', responseText);
+                
+            } catch (error) {
+                showResponse('queryResponse', `Error querying knowledge: ${error.message}`, true);
+            } finally {
+                setLoading('queryResponse', false);
+            }
+        }
+
+        async function searchDirect() {
+            const input = document.getElementById('queryInput');
+            const query = input.value.trim();
+            
+            if (!query) {
+                showResponse('queryResponse', 'Please enter a search term.', true);
+                return;
+            }
+
+            setLoading('queryResponse', true);
+            
+            try {
+                const result = await makeRequest(`/search?query=${encodeURIComponent(query)}`);
+                
+                let responseText = `🔍 Search Results for: "${query}"\n\n`;
+                
+                if (result.results.documents.length > 0) {
+                    result.results.documents.forEach((doc, index) => {
+                        const metadata = result.results.metadatas[index];
+                        responseText += `${index + 1}. ${doc}\n`;
+                        if (metadata.topic) {
+                            responseText += `   Topic: ${metadata.topic}\n`;
+                        }
+                        responseText += '\n';
+                    });
+                } else {
+                    responseText += 'No matching knowledge found.';
+                }
+                
+                showResponse('queryResponse', responseText);
+                
+            } catch (error) {
+                showResponse('queryResponse', `Error searching: ${error.message}`, true);
+            } finally {
+                setLoading('queryResponse', false);
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const stats = await makeRequest('/stats');
+                document.getElementById('statsData').textContent = 
+                    `💬 ${stats.total_conversations} conversations | 🧠 ${stats.total_knowledge_items} knowledge items`;
+            } catch (error) {
+                document.getElementById('statsData').textContent = 'Error loading stats';
+            }
+        }
+
+        function clearInput() {
+            document.getElementById('knowledgeInput').value = '';
+            document.getElementById('addResponse').style.display = 'none';
+        }
+
+        // Load stats on page load
+        loadStats();
+        
+        // Auto-refresh stats every 30 seconds
+        setInterval(loadStats, 30000);
+    </script>
+</body>
+</html>
