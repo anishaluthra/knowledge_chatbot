@@ -73,7 +73,7 @@ The system uses semantic search to find relevant information and generates conte
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │  Frontend HTML  │───▶│   FastAPI API    │───▶│   ChromaDB      │
-│  (User Interface)│    │  (Backend Logic) │    │ (Vector Store)  │
+│ (User Interface)│    │  (Backend Logic) │    │ (Vector Store)  │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
                                 │
                                 ▼
