@@ -99,21 +99,37 @@ class KnowledgeBot:
             return []
     
     def _parse_knowledge_response(self, response_text: str) -> List[KnowledgeExtraction]:
-        """Parse LLM response into structured knowledge - simplified version"""
-        # This is a simplified parser - you'd want more robust JSON extraction
+        """Parse LLM response into structured knowledge"""
+        import json
+
         knowledge_items = []
-        
-        # For demo purposes, create a basic extraction
-        sentences = response_text.split('.')
-        for sentence in sentences[:3]:  # Limit for demo
-            if len(sentence.strip()) > 20:  # Skip short fragments
+
+        # Strip markdown code fences if present
+        cleaned = re.sub(r"```(?:json)?\s*", "", response_text).strip()
+
+        # Find the first JSON array in the response
+        match = re.search(r"\[.*\]", cleaned, re.DOTALL)
+        if not match:
+            logger.warning("No JSON array found in LLM response")
+            return knowledge_items
+
+        try:
+            items = json.loads(match.group())
+        except json.JSONDecodeError as e:
+            logger.warning("Failed to parse JSON from LLM response: %s", e)
+            return knowledge_items
+
+        for item in items:
+            try:
                 knowledge_items.append(KnowledgeExtraction(
-                    topic=f"Knowledge from conversation",
-                    content=sentence.strip(),
-                    keywords=self._extract_keywords(sentence),
-                    importance_score=5
+                    topic=item.get("topic", "Unknown"),
+                    content=item.get("content", ""),
+                    keywords=item.get("keywords", []),
+                    importance_score=int(item.get("importance_score", 5)),
                 ))
-        
+            except Exception as e:
+                logger.warning("Skipping malformed knowledge item: %s", e)
+
         return knowledge_items
     
     def _extract_keywords(self, text: str) -> List[str]:
