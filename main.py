@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,6 +10,12 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 import re
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 # Pydantic models
 class ChatMessage(BaseModel):
@@ -88,7 +95,7 @@ class KnowledgeBot:
             return knowledge_items
             
         except Exception as e:
-            print(f"Error extracting knowledge: {e}")
+            logger.exception("Error extracting knowledge")
             return []
     
     def _parse_knowledge_response(self, response_text: str) -> List[KnowledgeExtraction]:
@@ -151,6 +158,7 @@ class KnowledgeBot:
             return response['response']
             
         except Exception as e:
+            logger.exception("Error querying knowledge base")
             return f"Error querying knowledge base: {e}"
 
 # Initialize the bot
@@ -256,7 +264,35 @@ async def search_knowledge(query: str, limit: int = 10):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+@app.get("/debug")
+async def debug_info():
+    """Debug endpoint to see what's stored"""
+    try:
+        # Get all conversations
+        conv_results = conversations_collection.get()
+        
+        # Get all knowledge
+        knowledge_results = knowledge_collection.get()
+        
+        return {
+            "conversations": {
+                "count": len(conv_results['documents']) if conv_results['documents'] else 0,
+                "documents": conv_results['documents'][:3] if conv_results['documents'] else [],  # Show first 3
+                "metadatas": conv_results['metadatas'][:3] if conv_results['metadatas'] else []
+            },
+            "knowledge": {
+                "count": len(knowledge_results['documents']) if knowledge_results['documents'] else 0,
+                "documents": knowledge_results['documents'][:3] if knowledge_results['documents'] else [],  # Show first 3
+                "metadatas": knowledge_results['metadatas'][:3] if knowledge_results['metadatas'] else []
+            }
+        }
+    except Exception as e:
+        logger.exception("Error in debug endpoint")
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
